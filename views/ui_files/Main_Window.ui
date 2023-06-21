@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1131</width>
+    <width>1061</width>
     <height>797</height>
    </rect>
   </property>
@@ -35,7 +35,7 @@
          <property name="title">
           <string/>
          </property>
-         <layout class="QVBoxLayout" name="verticalLayout_3" stretch="1,0,10">
+         <layout class="QVBoxLayout" name="verticalLayout_3" stretch="1,0,0,10">
           <item>
            <widget class="QFrame" name="frame_bar">
             <property name="frameShape">
@@ -74,6 +74,16 @@
               </widget>
              </item>
             </layout>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="boton_deseleccionar">
+            <property name="styleSheet">
+             <string notr="true">background-color: rgb(224, 225, 221);</string>
+            </property>
+            <property name="text">
+             <string>Deseleccionar todo</string>
+            </property>
            </widget>
           </item>
           <item>
@@ -160,23 +170,35 @@ border-radius: 10px;</string>
              </item>
              <item>
               <widget class="QLabel" name="label">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                 <horstretch>0</horstretch>
+                 <verstretch>0</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="layoutDirection">
+                <enum>Qt::LeftToRight</enum>
+               </property>
+               <property name="autoFillBackground">
+                <bool>false</bool>
+               </property>
                <property name="text">
                 <string/>
                </property>
                <property name="pixmap">
-                <pixmap resource="../../assets/iconos/iconos.qrc">:/assets e iconos/LOGO MADRE.png</pixmap>
+                <pixmap resource="../../assets/iconos/iconos.qrc">:/assets e iconos/LOGO MADRE (1).png</pixmap>
                </property>
                <property name="scaledContents">
-                <bool>false</bool>
+                <bool>true</bool>
                </property>
                <property name="alignment">
-                <set>Qt::AlignCenter</set>
+                <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
                </property>
                <property name="wordWrap">
                 <bool>true</bool>
                </property>
                <property name="margin">
-                <number>-43</number>
+                <number>0</number>
                </property>
                <property name="indent">
                 <number>-1</number>
@@ -206,6 +228,21 @@ border-radius: 10px;</string>
                <property name="frameShadow">
                 <enum>QFrame::Raised</enum>
                </property>
+               <layout class="QVBoxLayout" name="verticalLayout_4" stretch="1,7">
+                <item>
+                 <widget class="QFrame" name="frame_7">
+                  <property name="frameShape">
+                   <enum>QFrame::StyledPanel</enum>
+                  </property>
+                  <property name="frameShadow">
+                   <enum>QFrame::Raised</enum>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QWidget" name="widget" native="true"/>
+                </item>
+               </layout>
               </widget>
              </item>
              <item>

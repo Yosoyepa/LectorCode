@@ -1,5 +1,6 @@
 <RCC>
   <qresource prefix="assets e iconos">
     <file>LOGO MADRE.png</file>
+    <file>LOGO MADRE (1).png</file>
   </qresource>
 </RCC>
