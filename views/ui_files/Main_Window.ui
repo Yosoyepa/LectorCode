@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>902</width>
-    <height>689</height>
+    <width>1131</width>
+    <height>797</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -35,7 +35,7 @@
          <property name="title">
           <string/>
          </property>
-         <layout class="QVBoxLayout" name="verticalLayout_3" stretch="1,10">
+         <layout class="QVBoxLayout" name="verticalLayout_3" stretch="1,0,10">
           <item>
            <widget class="QFrame" name="frame_bar">
             <property name="frameShape">
@@ -77,7 +77,22 @@
            </widget>
           </item>
           <item>
+           <widget class="QPushButton" name="boton_seleccionar_todo">
+            <property name="styleSheet">
+             <string notr="true">background-color: rgb(224, 225, 221);</string>
+            </property>
+            <property name="text">
+             <string>Seleccionar Todo</string>
+            </property>
+           </widget>
+          </item>
+          <item>
            <widget class="QListWidget" name="lista_imagenes_cargadas">
+            <property name="font">
+             <font>
+              <pointsize>18</pointsize>
+             </font>
+            </property>
             <property name="styleSheet">
              <string notr="true">background-color: rgb(224, 225, 221);</string>
             </property>
@@ -98,6 +113,9 @@
           <enum>QFrame::Raised</enum>
          </property>
          <layout class="QVBoxLayout" name="verticalLayout_2" stretch="1,5">
+          <property name="spacing">
+           <number>20</number>
+          </property>
           <item>
            <widget class="QFrame" name="frame_2">
             <property name="styleSheet">
@@ -110,14 +128,43 @@ border-radius: 10px;</string>
             <property name="frameShadow">
              <enum>QFrame::Raised</enum>
             </property>
-            <layout class="QVBoxLayout" name="verticalLayout_4">
+            <layout class="QHBoxLayout" name="horizontalLayout_4">
+             <item>
+              <widget class="QLabel" name="label_nombre_archivo">
+               <property name="font">
+                <font>
+                 <family>Segoe UI</family>
+                 <pointsize>18</pointsize>
+                </font>
+               </property>
+               <property name="text">
+                <string/>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <spacer name="horizontalSpacer_2">
+               <property name="orientation">
+                <enum>Qt::Horizontal</enum>
+               </property>
+               <property name="sizeType">
+                <enum>QSizePolicy::Fixed</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>40</width>
+                 <height>20</height>
+                </size>
+               </property>
+              </spacer>
+             </item>
              <item>
               <widget class="QLabel" name="label">
                <property name="text">
                 <string/>
                </property>
                <property name="pixmap">
-                <pixmap resource="../../assets/iconos/iconos.qrc">:/Iconos de Logotipo/LOGO MADRE.png</pixmap>
+                <pixmap resource="../../assets/iconos/iconos.qrc">:/assets e iconos/LOGO MADRE.png</pixmap>
                </property>
                <property name="scaledContents">
                 <bool>false</bool>
@@ -129,7 +176,7 @@ border-radius: 10px;</string>
                 <bool>true</bool>
                </property>
                <property name="margin">
-                <number>-95</number>
+                <number>-43</number>
                </property>
                <property name="indent">
                 <number>-1</number>
@@ -150,6 +197,84 @@ border-radius: 10px;</string>
             <property name="frameShadow">
              <enum>QFrame::Raised</enum>
             </property>
+            <layout class="QVBoxLayout" name="verticalLayout_5" stretch="5,1">
+             <item>
+              <widget class="QFrame" name="frame_5">
+               <property name="frameShape">
+                <enum>QFrame::StyledPanel</enum>
+               </property>
+               <property name="frameShadow">
+                <enum>QFrame::Raised</enum>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QFrame" name="frame_6">
+               <property name="styleSheet">
+                <string notr="true">background-color: rgb(48, 92, 121);</string>
+               </property>
+               <property name="frameShape">
+                <enum>QFrame::StyledPanel</enum>
+               </property>
+               <property name="frameShadow">
+                <enum>QFrame::Raised</enum>
+               </property>
+               <layout class="QHBoxLayout" name="horizontalLayout_3">
+                <item>
+                 <widget class="QLineEdit" name="linea_edicion_texto">
+                  <property name="font">
+                   <font>
+                    <family>Segoe UI</family>
+                    <pointsize>18</pointsize>
+                    <weight>50</weight>
+                    <bold>false</bold>
+                   </font>
+                  </property>
+                  <property name="styleSheet">
+                   <string notr="true">background-color: rgb(224, 225, 221);</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <spacer name="horizontalSpacer">
+                  <property name="orientation">
+                   <enum>Qt::Horizontal</enum>
+                  </property>
+                  <property name="sizeType">
+                   <enum>QSizePolicy::Fixed</enum>
+                  </property>
+                  <property name="sizeHint" stdset="0">
+                   <size>
+                    <width>40</width>
+                    <height>20</height>
+                   </size>
+                  </property>
+                 </spacer>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="boton_procesar">
+                  <property name="styleSheet">
+                   <string notr="true">background-color: rgb(224, 225, 221);</string>
+                  </property>
+                  <property name="text">
+                   <string>Procesar</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="boton_guardar">
+                  <property name="styleSheet">
+                   <string notr="true">background-color: rgb(224, 225, 221);</string>
+                  </property>
+                  <property name="text">
+                   <string>Guardar</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </item>
+            </layout>
            </widget>
           </item>
          </layout>
