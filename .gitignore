@@ -1,0 +1,7 @@
+# git, ignore .env file
+env/.env
+/env
+.env
+.venv/
+venv/
+```
