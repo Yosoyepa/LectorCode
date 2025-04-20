@@ -7,7 +7,7 @@ from assets.iconos import resources
 class App(QtWidgets.QMainWindow):
     def __init__(self):
         super(App, self).__init__()
-        uic.loadUi('views/ui_files/Main_Window.ui', self)
+        uic.loadUi('LectorCode/views/ui_files/Main_Window.ui', self)
         self.boton_cargar.clicked.connect(self.cargar)
         self.boton_seleccionar_todo.clicked.connect(self.seleccionar_todo)
         self.boton_deseleccionar.clicked.connect(self.deseleccionar_todo)
