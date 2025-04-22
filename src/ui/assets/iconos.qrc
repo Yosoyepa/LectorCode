@@ -1,0 +1,8 @@
+<!DOCTYPE RCC><RCC version="1.0">
+<qresource prefix="/icons">
+    <file alias="chevron_right.png">icons/Chevron Right 2.png</file>
+    <file alias="forward.png">icons/foward2.0.png</file>
+    <file alias="logo_madre1.png">icons/LOGO MADRE (1).png</file>
+    <file alias="logo_madre.png">icons/LOGO MADRE.png</file>
+    </qresource>
+</RCC>
