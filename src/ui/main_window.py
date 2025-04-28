@@ -3,28 +3,23 @@ Ventana principal para procesar y renombrar imágenes escaneadas de guías de en
 """
 import os
 import sys
-import re
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional
 
-# PyQt imports - organizados por componentes
+# PyQt imports
 from PyQt5 import QtCore, QtGui, QtWidgets, uic
-from PyQt5.QtWidgets import (
-    QMainWindow, QFileDialog, QListWidgetItem, QMessageBox, 
-    QLabel, QTextEdit, QProgressDialog, QPushButton, QLineEdit
-)
-from PyQt5.QtCore import QDir, Qt, QEvent
-from PyQt5.QtGui import QPixmap, QColor
+from PyQt5.QtWidgets import QMainWindow, QListWidgetItem, QMessageBox, QLabel, QLineEdit, QPushButton
+from PyQt5.QtCore import Qt, QEvent
+from PyQt5.QtGui import QPixmap
 
 # Core imports
 try:
-    from src.core import file_operations
-    from src.core import image_processor
+    from src.core import processing_handler
 except ImportError as e:
     error_msg = f"Error Crítico: No se pudieron importar los módulos core: {e}"
     print(error_msg)
     sys.exit(error_msg)
 
-# Resources import
+# Local imports
 try:
     from . import resources_rc
     print("Archivo de recursos 'resources_rc.py' importado correctamente.")
@@ -32,6 +27,15 @@ except ImportError:
     print("ADVERTENCIA: No se encontró 'resources_rc.py'. "
           "Asegúrate de haber compilado 'iconos.qrc'. "
           "Los iconos definidos en el .ui pueden no cargarse.")
+
+# Imports de componentes y utilidades
+from src.ui.components.image_preview import ImagePreviewComponent
+from src.ui.components.item_processor import ItemProcessor
+from src.ui.controllers.item_list_controller import ItemListController 
+from src.ui.controllers.processing_controller import ProcessingController
+from src.utils.ui_helpers import configure_tooltips, set_widgets_enabled, clear_preview_widgets
+from src.utils.message_helpers import show_error_message, show_warning_message, show_info_message, confirm_action, create_processing_summary
+from src.utils.file_helpers import get_image_files_dialog, is_valid_filename
 
 # UI path
 UI_PATH = os.path.join(os.path.dirname(__file__), 'ui_files', 'Main_Window.ui')
@@ -55,16 +59,14 @@ class MainWindow(QMainWindow):
             print("Error fatal post-carga: La UI no parece haberse cargado correctamente. Saliendo.")
             sys.exit(1)
 
+        # Inicializar controladores y componentes
+        self._inicializar_componentes()
         self._conectar_eventos()
         self._inicializar_estado_ui()
 
-        # Instalar filtro de eventos en la lista
-        if hasattr(self, 'lista_imagenes'):
-            self.lista_imagenes.installEventFilter(self)
-
-    # =======================================
+    # =====================================
     # ===== INICIALIZACIÓN Y CONFIGURACIÓN =====
-    # =======================================
+    # =====================================
 
     def _cargar_ui(self) -> None:
         """Carga la interfaz de usuario desde el archivo .ui."""
@@ -86,12 +88,25 @@ class MainWindow(QMainWindow):
         """Busca y guarda referencias a los widgets principales de la UI."""
         # Widgets de visualización
         self.label_preview = self.findChild(QLabel, "label_preview")
+        self.label_nombre_archivo = self.findChild(QLabel, "label_nombre_archivo")
         
         # Widgets de interacción
+        self.lista_imagenes = self.findChild(QtWidgets.QListWidget, "lista_imagenes")
         self.linea_edicion_texto = self.findChild(QLineEdit, "linea_edicion_texto")
         self.boton_guardar = self.findChild(QPushButton, "boton_guardar")
+        
+        # Diagnóstico para el botón guardar
+        if not self.boton_guardar:
+            print("ADVERTENCIA: No se pudo encontrar el botón 'boton_guardar' en la UI")
+        else:
+            print("Botón guardar encontrado correctamente")
+        
         self.boton_volver_imagen = self.findChild(QPushButton, "boton_volver_imagen")
         self.boton_siguiente_imagen = self.findChild(QPushButton, "boton_siguiente_imagen")
+        self.boton_cargar = self.findChild(QPushButton, "boton_cargar")
+        self.boton_procesar = self.findChild(QPushButton, "boton_procesar")
+        self.boton_seleccionar_todo = self.findChild(QPushButton, "boton_seleccionar_todo") 
+        self.boton_deseleccionar = self.findChild(QPushButton, "boton_deseleccionar")
 
         # Verificar widgets críticos
         self._verificar_widgets_criticos()
@@ -99,6 +114,7 @@ class MainWindow(QMainWindow):
     def _verificar_widgets_criticos(self) -> None:
         """Verifica que todos los widgets críticos se hayan encontrado."""
         widgets_criticos = {
+            "lista_imagenes": getattr(self, 'lista_imagenes', None),
             "label_preview": self.label_preview,
             "linea_edicion_texto": self.linea_edicion_texto,
             "boton_guardar": self.boton_guardar,
@@ -109,6 +125,19 @@ class MainWindow(QMainWindow):
         for nombre, widget in widgets_criticos.items():
             if not widget:
                 print(f"Advertencia: Widget '{nombre}' no encontrado.")
+
+    def _inicializar_componentes(self) -> None:
+        """Inicializa los controladores y componentes de la aplicación."""
+        # Controladores
+        self.item_list_controller = ItemListController(self.lista_imagenes)
+        self.processing_controller = ProcessingController(self)
+        
+        # Componentes
+        self.image_preview = ImagePreviewComponent(self.label_preview, self.label_nombre_archivo)
+        
+        # Instalar filtro de eventos en la lista
+        if hasattr(self, 'lista_imagenes'):
+            self.lista_imagenes.installEventFilter(self)
 
     def _conectar_eventos(self) -> None:
         """Conecta las señales de los widgets a los métodos correspondientes."""
@@ -129,12 +158,12 @@ class MainWindow(QMainWindow):
 
     def _conectar_lista_imagenes(self) -> None:
         """Conecta eventos de la lista de imágenes."""
-        if hasattr(self, 'lista_imagenes'):
-            self.lista_imagenes.itemClicked.connect(self._item_seleccionado_cambiado)
-            self.lista_imagenes.currentItemChanged.connect(self._item_seleccionado_cambiado)
-            self.lista_imagenes.itemChanged.connect(self.actualizar_estado_ui)
+        if hasattr(self, 'item_list_controller'):
+            self.item_list_controller.connect_item_clicked(self._item_seleccionado_cambiado)
+            self.item_list_controller.connect_current_item_changed(self._item_seleccionado_cambiado)
+            self.item_list_controller.connect_item_changed(self.actualizar_estado_ui)
         else:
-            print("Error Crítico: No se encontró el widget 'lista_imagenes' en la UI.")
+            print("Error Crítico: No se pudo inicializar el controlador de lista de imágenes.")
 
     def _conectar_edicion_navegacion(self) -> None:
         """Conecta eventos de edición manual y navegación."""
@@ -155,25 +184,15 @@ class MainWindow(QMainWindow):
 
     def _deshabilitar_controles_iniciales(self) -> None:
         """Deshabilita controles que requieren selección/carga previa."""
-        if hasattr(self, 'boton_procesar'): 
-            self.boton_procesar.setEnabled(False)
-        if self.linea_edicion_texto: 
-            self.linea_edicion_texto.setEnabled(False)
-        if self.boton_guardar: 
-            self.boton_guardar.setEnabled(False)
-        if self.boton_volver_imagen: 
-            self.boton_volver_imagen.setEnabled(False)
-        if self.boton_siguiente_imagen: 
-            self.boton_siguiente_imagen.setEnabled(False)
+        widgets_a_deshabilitar = [
+            'boton_procesar', 'linea_edicion_texto', 'boton_guardar', 
+            'boton_volver_imagen', 'boton_siguiente_imagen'
+        ]
+        set_widgets_enabled(self, widgets_a_deshabilitar, False)
 
     def _limpiar_widgets_visualizacion(self) -> None:
         """Limpia los widgets de visualización."""
-        if self.label_preview:
-            self.label_preview.clear()
-            self.label_preview.setText("Selecciona un archivo para previsualizar.")
-            self.label_preview.setAlignment(Qt.AlignCenter)
-        if self.linea_edicion_texto:
-            self.linea_edicion_texto.clear()
+        clear_preview_widgets(self.label_preview, self.linea_edicion_texto)
 
     def _configurar_tooltips(self) -> None:
         """Configura los tooltips (textos de ayuda) para los widgets."""
@@ -185,11 +204,7 @@ class MainWindow(QMainWindow):
             'boton_volver_imagen': "Ver guía anterior",
             'boton_siguiente_imagen': "Ver guía siguiente"
         }
-        
-        for widget_name, tooltip_text in tooltips.items():
-            widget = getattr(self, widget_name, None)
-            if widget:
-                widget.setToolTip(tooltip_text)
+        configure_tooltips(self, tooltips)
 
     # ====================================
     # ===== GESTIÓN DE ESTADO DE UI =====
@@ -200,11 +215,11 @@ class MainWindow(QMainWindow):
         if not hasattr(self, 'lista_imagenes'): 
             return
 
-        items_chequeados = self.obtener_items_seleccionados()
-        item_actual = self.lista_imagenes.currentItem()
+        items_chequeados = self.item_list_controller.get_checked_items()
+        item_actual = self.item_list_controller.get_current_item()
         num_chequeados = len(items_chequeados)
-        num_total_items = self.lista_imagenes.count()
-        fila_actual = self.lista_imagenes.currentRow() if item_actual else -1
+        num_total_items = self.item_list_controller.get_item_count()
+        fila_actual = self.item_list_controller.get_current_row()
 
         self._actualizar_estado_botones_procesamiento(num_chequeados)
         self._actualizar_estado_edicion_manual(item_actual)
@@ -245,86 +260,36 @@ class MainWindow(QMainWindow):
             'lista_imagenes', 'boton_procesar', 'linea_edicion_texto',
             'boton_guardar', 'boton_volver_imagen', 'boton_siguiente_imagen'
         ]
-        
-        for nombre_widget in widgets_a_controlar:
-            if hasattr(self, nombre_widget):
-                widget = getattr(self, nombre_widget)
-                widget.setEnabled(habilitado)
+        set_widgets_enabled(self, widgets_a_controlar, habilitado)
 
         # Al re-habilitar, ajustar el estado específico
         if habilitado:
             self.actualizar_estado_ui()
 
-    # ===========================================
-    # ===== CARGA Y GESTIÓN DE IMÁGENES =====
-    # ===========================================
+    # ======================================
+    # ===== FUNCIONES PRINCIPALES DE UI =====
+    # ======================================
 
     def cargar_imagenes(self) -> None:
         """Abre un diálogo para seleccionar imágenes y las carga en la lista."""
         if not hasattr(self, 'lista_imagenes'):
-            QMessageBox.critical(self, "Error", "El componente lista de imágenes no está disponible.")
+            show_error_message(self, "Error", "El componente lista de imágenes no está disponible.")
             return
             
-        archivos = self._obtener_archivos_dialogo()
+        archivos = get_image_files_dialog(self)
         if not archivos: 
             return
 
-        self._limpiar_interfaz_para_nueva_carga()
-        archivos_cargados_count = self._cargar_archivos_en_lista(archivos)
+        # Limpiar y cargar nuevos archivos
+        self.item_list_controller.clear_list()
+        self._limpiar_widgets_visualizacion()
+        archivos_cargados_count = self.item_list_controller.load_files(archivos)
         
         print(f"Se cargaron {archivos_cargados_count} archivos.")
         
         # Seleccionar el primer item automáticamente
-        if self.lista_imagenes.count() > 0:
-            self.lista_imagenes.setCurrentRow(0)
-        else:
-            self.actualizar_estado_ui()
-
-    def _obtener_archivos_dialogo(self) -> List[str]:
-        """Muestra diálogo para seleccionar archivos y devuelve la lista de rutas."""
-        directorio_inicial = QDir.homePath()
-        archivos, _ = QFileDialog.getOpenFileNames(
-            self, "Abrir archivos de guías escaneadas", directorio_inicial,
-            "Archivos de imagen (*.jpg *.jpeg *.png *.bmp *.tif *.tiff);;Todos los archivos (*)"
-        )
-        return archivos
-
-    def _limpiar_interfaz_para_nueva_carga(self) -> None:
-        """Limpia la interfaz para una nueva carga de archivos."""
-        self.lista_imagenes.clear()
-        
-        if self.label_preview:
-            self.label_preview.clear()
-            self.label_preview.setText("Previsualización")
-            
-        if self.linea_edicion_texto:
-            self.linea_edicion_texto.clear()
-
-    def _cargar_archivos_en_lista(self, archivos: List[str]) -> int:
-        """Carga los archivos en la lista y devuelve el número de archivos cargados."""
-        archivos_cargados_count = 0
-        
-        for ruta_completa in archivos:
-            if os.path.exists(ruta_completa) and os.path.isfile(ruta_completa):
-                self._agregar_item_a_lista(ruta_completa)
-                archivos_cargados_count += 1
-            else:
-                print(f"Advertencia: Archivo no encontrado '{ruta_completa}', omitido.")
-                
-        return archivos_cargados_count
-
-    def _agregar_item_a_lista(self, ruta_completa: str) -> None:
-        """Crea un QListWidgetItem, le asocia la ruta y lo añade a la lista."""
-        nombre_archivo = os.path.basename(ruta_completa)
-        item = QListWidgetItem(nombre_archivo)
-        item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsUserCheckable)
-        item.setCheckState(Qt.Unchecked)
-        item.setData(Qt.UserRole, ruta_completa)
-        self.lista_imagenes.addItem(item)
-
-    # ======================================
-    # ===== PREVISUALIZACIÓN DE IMÁGENES =====
-    # ======================================
+        self.item_list_controller.select_first_item()
+        self.actualizar_estado_ui()
 
     def _item_seleccionado_cambiado(self, item_actual, item_previo=None) -> None:
         """Actualiza UI cuando el item actual cambia (clic o teclado)."""
@@ -334,77 +299,10 @@ class MainWindow(QMainWindow):
 
         print(f"Item seleccionado cambiado a: {item_a_mostrar.text() if item_a_mostrar else 'None'}")
 
-        self.mostrar_preview_item(item_a_mostrar)
+        # Actualizar previsualización y edición
+        self.image_preview.show_preview(item_a_mostrar)
         self.preparar_edicion_manual(item_a_mostrar)
         self.actualizar_estado_ui()
-
-    def mostrar_preview_item(self, item: Optional[QListWidgetItem]) -> None:
-        """Muestra la previsualización de la imagen del item dado."""
-        if not item or not self.label_preview:
-            self._mostrar_preview_vacio()
-            return
-
-        ruta_completa = item.data(Qt.UserRole)
-        self._actualizar_nombre_archivo(item.text())
-
-        if not ruta_completa or not os.path.exists(ruta_completa):
-            self._mostrar_error_preview(item.text(), ruta_completa)
-            return
-
-        self._cargar_imagen_preview(ruta_completa, item.text())
-
-    def _mostrar_preview_vacio(self) -> None:
-        """Muestra un estado vacío en la previsualización."""
-        if self.label_preview:
-            self.label_preview.clear()
-            self.label_preview.setText("Selecciona un archivo")
-            self.label_preview.setAlignment(Qt.AlignCenter)
-            
-        if hasattr(self, 'label_nombre_archivo'):
-            self.label_nombre_archivo.setText("-")
-
-    def _actualizar_nombre_archivo(self, nombre: str) -> None:
-        """Actualiza el label con el nombre del archivo."""
-        if hasattr(self, 'label_nombre_archivo'):
-            self.label_nombre_archivo.setText(nombre)
-
-    def _mostrar_error_preview(self, nombre: str, ruta: Optional[str]) -> None:
-        """Muestra un mensaje de error en la previsualización."""
-        mensaje = f"Archivo no encontrado:\n{nombre}"
-        if not ruta: 
-            mensaje = "Error: Ruta no asociada."
-            
-        self.label_preview.setText(mensaje)
-        self.label_preview.setAlignment(Qt.AlignCenter)
-
-    def _cargar_imagen_preview(self, ruta: str, nombre: str) -> None:
-        """Carga y muestra una imagen en la previsualización."""
-        try:
-            pixmap = QPixmap(ruta)
-            if pixmap.isNull():
-                self.label_preview.setText(f"Error al cargar:\n{nombre}")
-                self.label_preview.setAlignment(Qt.AlignCenter)
-            else:
-                self._mostrar_imagen_en_preview(pixmap)
-        except Exception as e:
-            print(f"Excepción al cargar QPixmap para '{ruta}': {e}")
-            self.label_preview.setText(f"Error al mostrar:\n{nombre}")
-            self.label_preview.setAlignment(Qt.AlignCenter)
-
-    def _mostrar_imagen_en_preview(self, pixmap: QPixmap) -> None:
-        """Escala y muestra un QPixmap en el QLabel 'label_preview'."""
-        if not self.label_preview: 
-            return
-            
-        scaled_pixmap = pixmap.scaled(
-            self.label_preview.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation
-        )
-        self.label_preview.setPixmap(scaled_pixmap)
-        self.label_preview.setAlignment(Qt.AlignCenter)
-
-    # =================================================
-    # ===== EDICIÓN MANUAL Y NAVEGACIÓN =====
-    # =================================================
 
     def preparar_edicion_manual(self, item: Optional[QListWidgetItem]) -> None:
         """Prepara el QLineEdit para edición manual basado en el item seleccionado."""
@@ -420,409 +318,94 @@ class MainWindow(QMainWindow):
 
     def guardar_nombre_manual(self) -> None:
         """Guarda el nombre editado manualmente para el item actualmente seleccionado."""
-        if not self._verificar_componentes_guardado():
-            return
-
-        item_actual = self.lista_imagenes.currentItem()
+        item_actual = self.item_list_controller.get_current_item()
         if not item_actual:
-            QMessageBox.warning(self, "Guardar Manual", 
-                                "Por favor, selecciona un archivo de la lista para renombrar.")
+            show_warning_message(self, "Guardar Manual", 
+                               "Por favor, selecciona un archivo de la lista para renombrar.")
             return
 
         nuevo_nombre_base = self.linea_edicion_texto.text().strip()
         
-        if not self._validar_nombre_nuevo(nuevo_nombre_base):
+        # Validar el nuevo nombre
+        valido, mensaje = is_valid_filename(nuevo_nombre_base)
+        if not valido:
+            show_warning_message(self, "Nombre Inválido", mensaje)
             return
             
-        if self._validar_y_realizar_renombrado(item_actual, nuevo_nombre_base):
-            self.actualizar_estado_ui()
+        # Procesar el renombrado
+        resultado = ItemProcessor.rename_item_manual(item_actual, nuevo_nombre_base)
+        self._procesar_resultado_renombrado(item_actual, resultado)
 
-    def _verificar_componentes_guardado(self) -> bool:
-        """Verifica que existan los componentes necesarios para guardar."""
-        if not hasattr(self, 'lista_imagenes') or not self.linea_edicion_texto or not self.boton_guardar:
-            QMessageBox.critical(self, "Error", "Componentes necesarios para guardar no encontrados.")
-            return False
-        return True
-
-    def _validar_nombre_nuevo(self, nombre: str) -> bool:
-        """Valida que el nombre nuevo sea adecuado."""
-        if not nombre:
-            QMessageBox.warning(self, "Nombre Vacío", "El nuevo nombre no puede estar vacío.")
-            return False
-
-        # Validación de caracteres inválidos
-        invalid_chars_pattern = r'[\<\>\:\"\/\\\|\?\*]'
-        if re.search(invalid_chars_pattern, nombre):
-            QMessageBox.warning(
-                self, "Nombre Inválido", 
-                f"El nombre '{nombre}' contiene caracteres inválidos.\nEvita: < > : \" / \\ | ? *"
-            )
-            return False
-            
-        return True
-
-    def _validar_y_realizar_renombrado(self, item: QListWidgetItem, nuevo_nombre_base: str) -> bool:
-        """Valida y realiza el renombrado del archivo."""
-        ruta_original = item.data(Qt.UserRole)
-        if not ruta_original or not os.path.exists(ruta_original):
-            QMessageBox.critical(
-                self, "Error", 
-                f"El archivo original '{item.text()}' no se encuentra o su ruta es inválida."
-            )
-            return False
-
-        _, extension = os.path.splitext(item.text())
-        nuevo_nombre_completo = f"{nuevo_nombre_base}{extension}"
+    def _procesar_resultado_renombrado(self, item: QListWidgetItem, resultado: dict) -> None:
+        """Procesa el resultado de un intento de renombrado manual."""
+        status = resultado.get("status", "")
         
-        # Verificar si el nombre es igual al actual
-        if nuevo_nombre_completo == item.text():
-            QMessageBox.information(self, "Sin Cambios", "El nombre editado es el mismo que el actual.")
-            return True
-
-        # Generar la nueva ruta y verificar conflictos
-        directorio = os.path.dirname(ruta_original)
-        nueva_ruta = os.path.join(directorio, nuevo_nombre_completo)
-        nueva_ruta_norm = os.path.normpath(nueva_ruta)
-        
-        if self._verificar_conflicto_archivo(ruta_original, nueva_ruta_norm):
-            return False
+        if status == "success":
+            # Renombrado exitoso - Pedir confirmación
+            nuevo_nombre = resultado["new_name"]
+            nueva_ruta = resultado["new_path"]
             
-        return self._ejecutar_renombrado(item, ruta_original, nueva_ruta, nuevo_nombre_completo)
-
-    def _verificar_conflicto_archivo(self, ruta_original: str, nueva_ruta: str) -> bool:
-        """Verifica si hay conflicto con un archivo existente."""
-        if os.path.exists(nueva_ruta) and os.path.normpath(ruta_original) != nueva_ruta:
-            QMessageBox.warning(
-                self, "Conflicto de Nombre", 
-                f"Ya existe un archivo con ese nombre en esta carpeta."
-            )
-            return True
-        return False
-
-    def _ejecutar_renombrado(self, item: QListWidgetItem, ruta_original: str, 
-                             nueva_ruta: str, nuevo_nombre: str) -> bool:
-        """Ejecuta la operación de renombrado después de confirmación."""
-        # Pedir confirmación
-        reply = QMessageBox.question(
-            self, 'Confirmar Renombrado Manual',
-            f"¿Renombrar '{item.text()}' a '{nuevo_nombre}'?",
-            QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel
-        )
-        
-        if reply == QMessageBox.Cancel:
-            return False
-
-        # Intentar renombrar
-        print(f"Intentando renombrar manualmente: '{ruta_original}' -> '{nueva_ruta}'")
-        exito, mensaje_error = file_operations.rename_scan(ruta_original, nueva_ruta)
-
-        if exito:
-            self._actualizar_item_renombrado(item, nuevo_nombre, nueva_ruta)
-            QMessageBox.information(self, "Éxito", f"Archivo renombrado a:\n'{nuevo_nombre}'")
-            return True
-        else:
-            QMessageBox.critical(
-                self, "Error al Renombrar", 
-                f"No se pudo renombrar el archivo.\nError: {mensaje_error}"
-            )
-            return False
-
-    def _actualizar_item_renombrado(self, item: QListWidgetItem, nuevo_nombre: str, nueva_ruta: str) -> None:
-        """Actualiza el item en la lista después de un renombrado exitoso."""
-        item.setText(nuevo_nombre)
-        item.setData(Qt.UserRole, nueva_ruta)
-        item.setBackground(QColor(220, 255, 220))  # Verde muy pálido para indicar éxito
-        item.setForeground(QColor('black'))
-
-    def _navegar_imagen_anterior(self) -> None:
-        """Selecciona el item anterior en la lista."""
-        if not hasattr(self, 'lista_imagenes'): 
-            return
-            
-        fila_actual = self.lista_imagenes.currentRow()
-        if fila_actual > 0:
-            self.lista_imagenes.setCurrentRow(fila_actual - 1)
-
-    def _navegar_siguiente_imagen(self) -> None:
-        """Selecciona el item siguiente en la lista."""
-        if not hasattr(self, 'lista_imagenes'): 
-            return
-            
-        fila_actual = self.lista_imagenes.currentRow()
-        if fila_actual < self.lista_imagenes.count() - 1:
-            self.lista_imagenes.setCurrentRow(fila_actual + 1)
-
-    # ===================================
-    # ===== SELECCIÓN DE ITEMS =====
-    # ===================================
-
-    def obtener_items_seleccionados(self) -> List[QListWidgetItem]:
-        """Obtiene los items con checkstate marcado."""
-        if not hasattr(self, 'lista_imagenes'): 
-            return []
-            
-        seleccionados = []
-        for i in range(self.lista_imagenes.count()):
-            item = self.lista_imagenes.item(i)
-            if item and item.checkState() == Qt.Checked:
-                seleccionados.append(item)
+            # Usar QMessageBox.No como botón por defecto en lugar de QMessageBox.Cancel
+            if confirm_action(self, 'Confirmar Renombrado Manual',
+                             f"¿Renombrar '{item.text()}' a '{nuevo_nombre}'?",
+                             QMessageBox.No):
+                # Actualizar item
+                ItemProcessor.update_renamed_item(item, nuevo_nombre, nueva_ruta)
+                show_info_message(self, "Éxito", f"Archivo renombrado a:\n'{nuevo_nombre}'")
                 
-        return seleccionados
+        elif status == "no_rename_needed":
+            # No necesita renombrarse
+            show_info_message(self, "Sin Cambios", 
+                            resultado.get("message", "El nombre editado es el mismo que el actual."))
+            
+        elif status == "target_exists":
+            # Conflicto con archivo existente
+            show_warning_message(self, "Conflicto de Nombre", 
+                                resultado.get("message", "Ya existe un archivo con ese nombre."))
+            
+        else:  # "error", "rename_failed" u otros estados
+            # Error en el renombrado
+            show_error_message(self, "Error al Renombrar", 
+                             resultado.get("message", "No se pudo renombrar el archivo."))
+            
+        # Actualizar estado UI después de cualquier operación
+        self.actualizar_estado_ui()
 
     def seleccionar_todo(self) -> None:
         """Marca todos los items de la lista."""
-        self._cambiar_seleccion_todos(Qt.Checked)
+        self.item_list_controller.select_all()
+        self.actualizar_estado_ui()
 
     def deseleccionar_todo(self) -> None:
         """Desmarca todos los items de la lista."""
-        self._cambiar_seleccion_todos(Qt.Unchecked)
-
-    def _cambiar_seleccion_todos(self, estado: Qt.CheckState) -> None:
-        """Cambia el estado de selección de todos los items."""
-        if not hasattr(self, 'lista_imagenes'): 
-            return
-            
-        for i in range(self.lista_imagenes.count()):
-            item = self.lista_imagenes.item(i)
-            if item and (item.flags() & Qt.ItemIsEnabled):
-                item.setCheckState(estado)
-                
+        self.item_list_controller.deselect_all()
         self.actualizar_estado_ui()
 
-    # =======================================
-    # ===== PROCESAMIENTO DE IMÁGENES =====
-    # =======================================
+    def _navegar_imagen_anterior(self) -> None:
+        """Selecciona el item anterior en la lista."""
+        self.item_list_controller.navigate_previous()
+
+    def _navegar_siguiente_imagen(self) -> None:
+        """Selecciona el item siguiente en la lista."""
+        self.item_list_controller.navigate_next()
 
     def procesar_seleccionados(self) -> None:
         """Procesa todos los items seleccionados con checkmark."""
-        items_a_procesar = self.obtener_items_seleccionados()
+        items_a_procesar = self.item_list_controller.get_checked_items()
         
         if not items_a_procesar:
-            QMessageBox.warning(
-                self, "Sin Selección", 
-                "Por favor, selecciona (marca) al menos un archivo para procesar."
-            )
+            show_warning_message(self, "Sin Selección", 
+                               "Por favor, selecciona (marca) al menos un archivo para procesar.")
             return
 
-        total_items = len(items_a_procesar)
-        resultados = self._inicializar_resultados()
+        # Procesar los items
+        resultados = self.processing_controller.process_items(
+            items_a_procesar, 
+            self._set_controles_habilitados
+        )
         
-        self._set_controles_habilitados(False)
-        progress_dialog = self._crear_dialogo_progreso(total_items)
-        
-        try:
-            self._procesar_items_con_progreso(items_a_procesar, progress_dialog, resultados)
-        except Exception as e:
-            print(f"Error inesperado durante el procesamiento: {e}")
-            QMessageBox.critical(
-                self, "Error en Procesamiento", 
-                f"Ocurrió un error inesperado: {str(e)}"
-            )
-            resultados["errores_detalle"].append(f"Error inesperado general: {str(e)}")
-        finally:
-            progress_dialog.close()
-            self._set_controles_habilitados(True)
-            self._mostrar_resumen_procesamiento(resultados, total_items)
-
-    def _inicializar_resultados(self) -> Dict:
-        """Inicializa el diccionario de resultados del procesamiento."""
-        return {
-            "exito": 0, 
-            "fallo_extraccion": 0, 
-            "fallo_renombrado": 0, 
-            "ya_existe": 0, 
-            "archivo_no_encontrado": 0, 
-            "errores_detalle": []
-        }
-
-    def _crear_dialogo_progreso(self, total_items: int) -> QProgressDialog:
-        """Crea y configura el diálogo de progreso."""
-        progress_dialog = QProgressDialog("Procesando archivos...", "Cancelar", 0, total_items, self)
-        progress_dialog.setWindowTitle("Procesando")
-        progress_dialog.setWindowModality(Qt.WindowModal)
-        progress_dialog.setMinimumDuration(500)
-        progress_dialog.setValue(0)
-        return progress_dialog
-
-    def _procesar_items_con_progreso(self, items: List[QListWidgetItem], 
-                                    progress_dialog: QProgressDialog, 
-                                    resultados: Dict) -> None:
-        """Procesa los items mostrando progreso."""
-        progreso = 0
-        for item in items[:]:
-            progreso += 1
-            progress_dialog.setValue(progreso)
-            progress_dialog.setLabelText(f"Procesando {progreso}/{len(items)}: {item.text()}")
-            QtWidgets.QApplication.processEvents()
-            
-            if progress_dialog.wasCanceled():
-                resultados["errores_detalle"].insert(0, "Proceso cancelado por el usuario.")
-                break
-                
-            resultado_item = self._procesar_item(item)
-            self._actualizar_contadores_resultados(resultado_item, resultados)
-
-    def _actualizar_contadores_resultados(self, resultado_item: Dict, resultados: Dict) -> None:
-        """Actualiza los contadores de resultados según el tipo de resultado."""
-        tipo_resultado = resultado_item.get("tipo", "desconocido")
-        
-        if tipo_resultado == "exito":              
-            resultados["exito"] += 1
-        elif tipo_resultado == "ya_existe":        
-            resultados["ya_existe"] += 1
-        elif tipo_resultado == "no_encontrado":    
-            resultados["archivo_no_encontrado"] += 1
-        elif tipo_resultado == "extraccion":       
-            resultados["fallo_extraccion"] += 1
-        elif tipo_resultado == "renombrado":       
-            resultados["fallo_renombrado"] += 1
-            
-        if tipo_resultado != "exito":
-            mensaje = resultado_item.get("mensaje", "Error desconocido")
-            if mensaje: 
-                resultados["errores_detalle"].append(mensaje)
-
-    def _procesar_item(self, item: QListWidgetItem) -> Dict:
-        """Procesa un item individual (OCR/Barcode y renombrado)."""
-        # Restaurar apariencia
-        item.setBackground(QColor('white'))
-        item.setForeground(QColor('black'))
-        
-        # Obtener datos del item
-        ruta_original = item.data(Qt.UserRole)
-        nombre_actual_item = item.text()
-        
-        # Verificar existencia del archivo
-        if not ruta_original:
-            mensaje = f"{nombre_actual_item}: Error interno - Ruta no asociada."
-            self._marcar_item_error(item, f"{nombre_actual_item} [Error Ruta]", QColor(255, 0, 0))
-            return {"tipo": "no_encontrado", "mensaje": mensaje}
-            
-        if not os.path.exists(ruta_original):
-            mensaje = f"{nombre_actual_item}: Archivo no encontrado en ruta '{ruta_original}'."
-            self._marcar_item_error(item, f"{nombre_actual_item} [No encontrado]", QColor(255, 204, 204))
-            return {"tipo": "no_encontrado", "mensaje": mensaje}
-        
-        # Extraer número de guía
-        try:
-            numero_guia = image_processor.get_guide_number(ruta_original)
-        except Exception as e:
-            mensaje = f"{nombre_actual_item}: Error extrayendo número - {str(e)}"
-            self._marcar_item_error(item, f"{nombre_actual_item} [Error OCR/BC]", QColor(255, 153, 153))
-            return {"tipo": "extraccion", "mensaje": mensaje}
-            
-        if not numero_guia:
-            mensaje = f"{nombre_actual_item}: No se pudo extraer número de guía (OCR/Barcode)."
-            self._marcar_item_error(item, f"{nombre_actual_item} [No reconocido]", QColor(255, 230, 204))
-            return {"tipo": "extraccion", "mensaje": mensaje}
-        
-        # Limpiar número de guía
-        numero_guia_str = str(numero_guia).strip()
-        numero_guia_limpio = "".join(filter(str.isalnum, numero_guia_str))
-        
-        if not numero_guia_limpio:
-            mensaje = f"{nombre_actual_item}: Número de guía inválido después de limpiar ('{numero_guia_str}')."
-            self._marcar_item_error(item, f"{nombre_actual_item} [Guía inválida]", QColor(255, 230, 204))
-            return {"tipo": "extraccion", "mensaje": mensaje}
-        
-        # Preparar renombrado
-        directorio = os.path.dirname(ruta_original)
-        _, extension = os.path.splitext(nombre_actual_item)
-        nuevo_nombre = f"{numero_guia_limpio}{extension}"
-        nueva_ruta = os.path.join(directorio, nuevo_nombre)
-        
-        # Verificar si ya tiene el nombre correcto
-        if nuevo_nombre == nombre_actual_item:
-            self._marcar_item_estado(item, f"{nombre_actual_item} [Ya correcto]", QColor(220, 220, 220))
-            item.setCheckState(Qt.Unchecked)
-            item.setData(Qt.UserRole, nueva_ruta)
-            return {"tipo": "exito", "mensaje": ""}
-        
-        # Verificar si el destino ya existe
-        if os.path.exists(os.path.normpath(nueva_ruta)):
-            mensaje = f"{nombre_actual_item}: El destino '{nuevo_nombre}' ya existe."
-            self._marcar_item_error(item, f"{nombre_actual_item} [Destino existe]", QColor(255, 255, 204))
-            return {"tipo": "ya_existe", "mensaje": mensaje}
-        
-        # Renombrar
-        exito_renombrado, mensaje_error = file_operations.rename_scan(ruta_original, nueva_ruta)
-        
-        if exito_renombrado:
-            self._marcar_item_estado(item, nuevo_nombre, QColor(204, 255, 204))
-            item.setCheckState(Qt.Unchecked)
-            item.setData(Qt.UserRole, nueva_ruta)
-            return {"tipo": "exito", "mensaje": ""}
-        else:
-            mensaje = f"{nombre_actual_item}: Error renombrando - {mensaje_error}"
-            self._marcar_item_error(item, f"{nombre_actual_item} [Error al renombrar]", QColor(255, 153, 153))
-            return {"tipo": "renombrado", "mensaje": mensaje}
-
-    def _marcar_item_error(self, item: QListWidgetItem, texto: str, color: QColor) -> None:
-        """Marca un item con un estado de error."""
-        if not item: 
-            return
-            
-        item.setText(texto)
-        item.setBackground(color)
-        
-        # Ajustar color de texto para contraste
-        if color.lightnessF() < 0.5 or (color.red() > 180 and color.green() < 100):
-            item.setForeground(QColor('white'))
-        else:
-            item.setForeground(QColor('black'))
-
-    def _marcar_item_estado(self, item: QListWidgetItem, texto: str, color: QColor) -> None:
-        """Marca un item con un estado normal."""
-        if not item: 
-            return
-            
-        item.setText(texto)
-        item.setBackground(color)
-        item.setForeground(QColor('black'))
-
-    def _mostrar_resumen_procesamiento(self, resultados: Dict, total_seleccionados: int) -> None:
-        """Muestra un resumen del procesamiento realizado."""
-        mensaje = f"Proceso completado para {total_seleccionados} archivos seleccionados.\n\n"
-        mensaje += f"  - Éxito / Ya correctos: {resultados['exito']}\n"
-        mensaje += f"  - Fallo extracción (OCR/BC): {resultados['fallo_extraccion']}\n"
-        mensaje += f"  - Fallo al renombrar (Error OS): {resultados['fallo_renombrado']}\n"
-        mensaje += f"  - Omitidos (Destino ya existe): {resultados['ya_existe']}\n"
-        mensaje += f"  - Omitidos (Archivo no encontrado): {resultados['archivo_no_encontrado']}\n"
-        
-        fallos_totales = (total_seleccionados - resultados['exito'])
-        
-        # Crear diálogo
-        msg_box = QMessageBox(self)
-        msg_box.setWindowTitle("Resultado del Proceso")
-        msg_box.setText(mensaje)
-        msg_box.setIcon(QMessageBox.Warning if fallos_totales > 0 else QMessageBox.Information)
-        
-        # Añadir detalles si hay errores
-        if resultados["errores_detalle"]:
-            self._añadir_detalles_errores(msg_box, resultados["errores_detalle"])
-            
-        msg_box.exec_()
-
-    def _añadir_detalles_errores(self, msg_box: QMessageBox, errores: List[str]) -> None:
-        """Añade detalles de errores al cuadro de mensaje."""
-        scroll_text = QTextEdit()
-        scroll_text.setReadOnly(True)
-        detalles_str = "\n".join([f"- {e}" for e in errores])
-        scroll_text.setText("Detalles de errores/advertencias:\n" + detalles_str)
-        scroll_text.setMinimumHeight(150)
-        
-        try:
-            msg_box.layout().addWidget(
-                scroll_text, 
-                msg_box.layout().rowCount(), 
-                0, 
-                1, 
-                msg_box.layout().columnCount()
-            )
-            msg_box.setStyleSheet("QMessageBox { messagebox-width: 500px; }")
-        except Exception as layout_e:
-            print(f"Error añadiendo detalles al QMessageBox layout: {layout_e}")
-            msg_box.setDetailedText("\n".join(errores))
+        # Mostrar resumen
+        create_processing_summary(self, resultados, len(items_a_procesar))
 
     # ==================================
     # ===== EVENTOS DE LA VENTANA =====
@@ -840,14 +423,9 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:
         """Intercepta el evento de cierre para pedir confirmación."""
-        reply = QMessageBox.question(
-            self, 'Confirmar Salida',
-            "¿Estás seguro de que quieres salir?",
-            QMessageBox.Yes | QMessageBox.No, 
-            QMessageBox.No
-        )
-        
-        if reply == QMessageBox.Yes:
+        if confirm_action(self, 'Confirmar Salida', 
+                         "¿Estás seguro de que quieres salir?", 
+                         QMessageBox.No):
             print("Cerrando la aplicación...")
             event.accept()
         else:

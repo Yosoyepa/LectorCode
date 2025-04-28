@@ -32,6 +32,10 @@ def main():
     # Setup logging
     setup_logging()
     
+    # Suprimir warnings de fuentes no encontradas
+    import os
+    os.environ["QT_LOGGING_RULES"] = "qt.qpa.fonts=false"
+    
     # Create application
     app = QtWidgets.QApplication(sys.argv)
     
