@@ -12,3 +12,12 @@ __pycache__/
 
 # Ignore UI specific cache
 ui/__pycache__/
+
+# Ignore build, dll and dist folders
+build/
+dist/
+*.egg-info/
+*.egg
+*.whl
+*dll/
+lectorcode-pyinstaller
