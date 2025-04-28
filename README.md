@@ -160,7 +160,7 @@ Las contribuciones son bienvenidas. Por favor, sigue estos pasos:
 
 Juan Carlos Andrade - [andradeunigarrojuancarlos@gmmail.com](mailto:andradeunigarrojuancarlos@gmail.com)
 
-Repositorio: [https://github.com/usuario/LectorCode](https://github.com/usuario/LectorCode)
+Repositorio: [https://github.com/Yosoyepa/LectorCode](https://github.com/Yosoyepa/LectorCode)
 
 ---
 
