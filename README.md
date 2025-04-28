@@ -158,7 +158,7 @@ Las contribuciones son bienvenidas. Por favor, sigue estos pasos:
 
 ## Contacto
 
-Juan Carlos Andrade - [andradeunigarrojuancarlos@gmmail.com](mailto:andradeunigarrojuancarlos@gmail.com)
+Juan Carlos Andrade - [andradeunigarrojuancarlos@gmail.com](mailto:andradeunigarrojuancarlos@gmail.com)
 
 Repositorio: [https://github.com/Yosoyepa/LectorCode](https://github.com/Yosoyepa/LectorCode)
 
